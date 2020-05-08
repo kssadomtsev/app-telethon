@@ -1,4 +1,4 @@
-import os
+from datetime import date, time, datetime
 import asyncio
 
 from utils.utils import get_logger
@@ -6,6 +6,8 @@ from model.database import Database, Channel
 
 from telethon.sync import TelegramClient, events, utils
 from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.functions.messages import GetHistoryRequest
+from telethon.tl.types import Message
 from telethon import connection
 
 logger = get_logger()
@@ -15,6 +17,7 @@ loop = asyncio.get_event_loop()
 
 
 class Controller:
+    albums = {}
 
     def __init__(self, session, api_id, api_hash, channels, mode,
                  proxy=None):
@@ -35,8 +38,13 @@ class Controller:
         # Use the client in a `with` block. It calls `start/disconnect` automatically.
         self.database = Database()
         with self.client:
-            self.client.add_event_handler(self.handler, events.NewMessage)
+            #self.client.add_event_handler(self.forward_album, events.Album(chats=('@Ordicyn', '@lazycat90210')))
+            self.client.add_event_handler(self.forward_album_legacy, events.NewMessage(from_users=('@Ordicyn', '@lazycat90210'),
+                                                                              func=lambda e: e.grouped_id))
+            self.client.add_event_handler(self.forward_msg, events.NewMessage(from_users=('@Ordicyn', '@lazycat90210'),
+                                                                              func=lambda e: e.grouped_id is None))
             loop.run_until_complete(self.join_channel(channels.split(",")))
+            # loop.run_until_complete(self.periodic_tasks())
             # cat = self.client.get_entity('lazycat90210')
             # print(cat)
             # cat = self.client.get_input_entity('lazycat90210')
@@ -46,20 +54,63 @@ class Controller:
             # print(dialogs)
             # logger.info(self.client.get_me().stringify())
             # logger.info('(Press Ctrl+C to stop this)')
-            self.database.fetchAllChannels()
+            # self.database.fetchAllChannels()
             self.client.run_until_disconnected()
 
-    async def handler(self, event):
+
+    async def forward_album_legacy(self, event):
+        pair = (event.chat_id, event.grouped_id)
+        if pair in self.albums:
+            self.albums[pair].append(event.message)
+            return
+        self.albums[pair] = [event.message]
+        await asyncio.sleep(0.3)
+        messages = self.albums.pop(pair)
+        await event.respond(f'Got {len(messages)} photos!')
+        medias = []
+        for msg in messages:
+            medias.append(msg.media)
+        await self.client.send_file('test_channel_5', medias, caption='[Сохранёнки](https://t.me/savedmemess)')
+
+
+    async def forward_album(self, event):
+        print('Got an album with', len(event), 'items')
         sender = await event.get_sender()
-        logger.info(sender.stringify())
-        name = utils.get_display_name(sender)
-        print(name, 'said', event.text, '!')
-        await event.reply('hi!')
+        logger.info('%s %s', "Event", str(event))
+        logger.info('Recieved album')
+        await event.forward_to('test_channel_5')
+
+    async def forward_msg(self, event):
+        sender = await event.get_sender()
+        logger.info('%s %s', "Event", str(event))
+        logger.info('%s %s', "Recieved new message for forwarding from", str(sender.username))
+        msg = event.message
+        logger.info('%s %s', "Message", str(msg))
+
+        if msg.media is not None:
+            logger.info('Check if that message is album')
+
+            media = msg.media
+            # new_msg = Message(media=media)
+            # new_msg = msg
+            # new_msg.fwd_from = None
+            # new_msg.message = '**Using** __markdown__ `too`!'
+            # await self.client.send_message('test_channel_5', new_msg)
+
+            await self.client.send_file('test_channel_5', media,
+                                        caption='[Сохранёнки](https://t.me/savedmemess)')
+        else:
+            logger.info("Message doesn't contain some media")
+        # sender = await event.get_sender()
+        # logger.info(sender.stringify())
+        # name = utils.get_display_name(sender)
+        # print(name, 'said', event.text, '!')
+        # await event.reply(event.text)
 
     async def join_channel(self, channels):
         for channel_url in channels:
             channel_entity = await self.client.get_entity(channel_url)
-            if self.database.fetchChannelByID(channel_entity.id) is None:
+            if self.database.getChannelByID(channel_entity.id) is None:
                 channel = Channel(channel_entity.id, channel_entity.title, True)
                 self.database.addChannel(channel)
                 logger.info('%s %s', channel_entity.title, 'was added to database')
@@ -70,3 +121,53 @@ class Controller:
                     logger.error('%s %s', 'failed join to the channel', channel_entity.title)
             else:
                 logger.info('%s %s %s', 'channel with ID', channel_entity.id, 'already in database')
+
+    async def periodic_tasks(self):
+        asyncio.create_task(self.print_forever())
+        asyncio.create_task(self.dump_channels())
+
+    async def dump_channels(self):
+        while True:
+            current_time = datetime.time(datetime.now()).strftime("%H:%M:%S")
+            # if current_time == "09:00:00":
+
+            channels = self.database.getAllChannels()
+            for channel in channels:
+                logger.info('%s %s', 'Try to dump message from channel', channel.title)
+                try:
+                    logger.info('At first we need to be sure that channel hasnt been dumped yet')
+                    current_date = date.today()
+                    current_datetime = datetime.now()
+                    print(current_date)
+                    if self.database.getRevisionByIDAndDate(channel.channel_id, current_date) is None:
+                        logger.info('This channel hasnt been dumped yet')
+                        try:
+                            logger.info('Init telethon request')
+                            channel_entity = await self.client.get_input_entity(channel.channel_id)
+                            posts = await self.client(GetHistoryRequest(
+                                peer=channel_entity,
+                                limit=100,
+                                offset_date=None,
+                                offset_id=0,
+                                max_id=0,
+                                min_id=0,
+                                add_offset=0,
+                                hash=0))
+
+                            print(posts.messages.__class__)
+                            print(len(posts.messages))
+                            # for msg in posts.messages:
+                            #     print(msg.__class__)
+                            # print(msg.stringify())
+                        except:
+                            logger.info('%s %s', 'Failed to dump message from channel via telethon', channel.title)
+                except:
+                    logger.info('%s %s', 'Failed to dump message from channel', channel.title)
+            await asyncio.sleep(60)
+        # print("Await function")
+        # await asyncio.sleep(60)
+
+    async def print_forever(self):
+        while True:
+            print("Await function")
+            await asyncio.sleep(60)

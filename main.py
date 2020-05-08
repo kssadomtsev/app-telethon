@@ -18,6 +18,11 @@ mode = os.getenv("MODE")
 api_id = os.getenv('api_id')
 api_hash = os.getenv('api_hash')
 
+proxy_ip = config['Telegram']['proxy_ip']
+proxy_port = int(config['Telegram']['proxy_port'])
+secret = config['Telegram']['secret']
+proxy = (proxy_ip, proxy_port, secret)
+
 
 if __name__ == '__main__':
     if mode == "dev":
