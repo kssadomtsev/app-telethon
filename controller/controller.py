@@ -19,7 +19,7 @@ loop = asyncio.get_event_loop()
 class Controller:
     albums = {}
 
-    def __init__(self, session, api_id, api_hash, channels, mode,
+    def __init__(self, session, api_id, api_hash, mode,
                  proxy=None):
         """
         Initializes the InteractiveTelegramClient.
@@ -38,12 +38,12 @@ class Controller:
         # Use the client in a `with` block. It calls `start/disconnect` automatically.
         self.database = Database()
         with self.client:
-            #self.client.add_event_handler(self.forward_album, events.Album(chats=('@Ordicyn', '@lazycat90210')))
-            self.client.add_event_handler(self.forward_album_legacy, events.NewMessage(from_users=('@Ordicyn', '@lazycat90210'),
-                                                                              func=lambda e: e.grouped_id))
+            self.client.add_event_handler(self.forward_album_legacy,
+                                          events.NewMessage(from_users=('@Ordicyn', '@lazycat90210'),
+                                                            func=lambda e: e.grouped_id))
             self.client.add_event_handler(self.forward_msg, events.NewMessage(from_users=('@Ordicyn', '@lazycat90210'),
                                                                               func=lambda e: e.grouped_id is None))
-            loop.run_until_complete(self.join_channel(channels.split(",")))
+            # loop.run_until_complete(self.join_channel(channels.split(",")))
             # loop.run_until_complete(self.periodic_tasks())
             # cat = self.client.get_entity('lazycat90210')
             # print(cat)
@@ -57,7 +57,6 @@ class Controller:
             # self.database.fetchAllChannels()
             self.client.run_until_disconnected()
 
-
     async def forward_album_legacy(self, event):
         pair = (event.chat_id, event.grouped_id)
         if pair in self.albums:
@@ -70,42 +69,57 @@ class Controller:
         medias = []
         for msg in messages:
             medias.append(msg.media)
-        await self.client.send_file('test_channel_5', medias, caption='[Сохранёнки](https://t.me/savedmemess)')
-
-
-    async def forward_album(self, event):
-        print('Got an album with', len(event), 'items')
-        sender = await event.get_sender()
-        logger.info('%s %s', "Event", str(event))
-        logger.info('Recieved album')
-        await event.forward_to('test_channel_5')
+        await self.client.send_file('lazycat90210', medias, caption='✅ [Сохранёнки](https://t.me/savedmemess)')
 
     async def forward_msg(self, event):
-        sender = await event.get_sender()
         logger.info('%s %s', "Event", str(event))
+        sender = await event.get_sender()
         logger.info('%s %s', "Recieved new message for forwarding from", str(sender.username))
         msg = event.message
         logger.info('%s %s', "Message", str(msg))
-
-        if msg.media is not None:
-            logger.info('Check if that message is album')
-
+        if msg.media is not None and (type(msg.media) == 'MessageMediaPhoto'
+                                      or type(msg.media) == 'MessageMediaDocument'):
+            logger.info('Message contains media photo or video')
             media = msg.media
-            # new_msg = Message(media=media)
-            # new_msg = msg
-            # new_msg.fwd_from = None
-            # new_msg.message = '**Using** __markdown__ `too`!'
-            # await self.client.send_message('test_channel_5', new_msg)
-
-            await self.client.send_file('test_channel_5', media,
-                                        caption='[Сохранёнки](https://t.me/savedmemess)')
+            await self.client.send_file('lazycat90210', media,
+                                        caption='✅ [Сохранёнки](https://t.me/savedmemess)')
         else:
             logger.info("Message doesn't contain some media")
-        # sender = await event.get_sender()
-        # logger.info(sender.stringify())
-        # name = utils.get_display_name(sender)
-        # print(name, 'said', event.text, '!')
-        # await event.reply(event.text)
+            if msg.message.lower() == 'help':
+                logger.info('Message is help request')
+                await event.respond(f'help')
+            elif msg.message.lower() == 'list':
+                logger.info('Message is channels list request')
+                try:
+                    channels = self.database.getAllChannels()
+                    response = "Now is listening following channels:\n" + "\n".join(map(str, channels))
+                    logger.error(response)
+                    await event.respond(message=response, link_preview=False)
+                except Exception as ex:
+                    error_msg = "Failed to get chanel list with exception: " + str(ex)
+                    logger.error(error_msg)
+            elif msg.message.lower().startswith('add'):
+                logger.info('Message is request to add channel to list')
+                try:
+                    channel_url = msg.message.lower().split(' ')[1]
+                    logger.info('%s %s', "Trying to add new channel by link", channel_url)
+                    channel_entity = await self.client.get_entity(channel_url)
+                    if self.database.getChannelByID(channel_entity.id) is None:
+                        channel = Channel(channel_entity.id, channel_entity.title, channel_url, True)
+                        self.database.addChannel(channel)
+                        success_msg = channel_entity.title + ' was added to database'
+                        logger.info(success_msg)
+                        await event.respond(success_msg)
+                    else:
+                        error_msg = 'channel with ID ' + str(channel_entity.id) + ' already in database'
+                        logger.error(error_msg)
+                        await event.respond(error_msg)
+                except Exception as ex:
+                    error_msg = "Failed to add channel to list with exception: " + str(ex)
+                    logger.error(error_msg)
+                    await event.respond(error_msg)
+            elif msg.message.lower().startswith('delete'):
+                logger.info('Message is request to delete channel from list')
 
     async def join_channel(self, channels):
         for channel_url in channels:

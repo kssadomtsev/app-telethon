@@ -4,6 +4,7 @@ import configparser
 from sqlalchemy import create_engine
 from sqlalchemy import Table, Column, String, MetaData, Integer, Boolean, Date
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
 
 from utils.utils import get_logger
@@ -25,6 +26,9 @@ database = config['Database']['database']
 
 database_uri = 'postgres://' + username + ':' + password_db + '@' + host + ':' + port + "/" + database
 
+channels_init = text(""" INSERT INTO channels (channel_id, title, link, enable) 
+             VALUES ('1019255153', 'картинки-картиночки', 'https://t.me/ny_privetik', True), 
+             ('1103602213', 'KrololoPower', 'https://t.me/Krololochannel', True) """)
 
 class Database:
     engine = create_engine(database_uri)
@@ -33,18 +37,19 @@ class Database:
     channels_table = Table('channels', meta,
                            Column('channel_id', Integer, primary_key=True),
                            Column('title', String),
+                           Column('link', String),
                            Column('enable', Boolean))
 
     revision_table = Table('revisions', meta,
                            Column('channel_id', Integer, primary_key=True),
                            Column('date', Date, primary_key= True))
 
-
     def __init__(self):
         self.connection = self.engine.connect()
         logger.info("DB Instance created")
         if not self.engine.dialect.has_table(self.engine, 'channels'):
             self.channels_table.create()
+            self.engine.execute(channels_init)
         if not self.engine.dialect.has_table(self.engine, 'revisions'):
             self.revision_table.create()
 
@@ -68,6 +73,13 @@ class Database:
         return r
 
     def getChannelByID(self, channel_id):
+        session = self.Session()
+        r = session.query(Channel).filter(Channel.channel_id == channel_id).first()
+        session.expunge_all()
+        session.close()
+        return r
+
+    def delChannelByID(self, channel_id):
         session = self.Session()
         r = session.query(Channel).filter(Channel.channel_id == channel_id).first()
         session.expunge_all()
@@ -104,15 +116,17 @@ class Channel(Base):
     __tablename__ = 'channels'
     channel_id = Column(Integer, primary_key=True)
     title = Column(String)
+    link = Column(String)
     enable = Column(Boolean)
 
-    def __init__(self, channel_id, title, enable):
+    def __init__(self, channel_id, title, link, enable):
         self.channel_id = channel_id
         self.title = title
+        self.link = link
         self.enable = enable
 
     def __repr__(self):
-        return "<Channel(id='%s', title='%s', enable='%s')>" % (self.channel_id, self.title, self.enable)
+        return "<Channel(id='%s', title='%s', link='%s' enable='%s')>" % (self.channel_id, self.title, self.link, self.enable)
 
 
 class Revision(Base):

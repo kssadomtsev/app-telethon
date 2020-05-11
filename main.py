@@ -12,7 +12,6 @@ config.read("config.ini")
 
 # Apply config values to vars
 session = config['Telegram']['session']
-channels = config['Telegram']['channels']
 
 mode = os.getenv("MODE")
 api_id = os.getenv('api_id')
@@ -26,12 +25,12 @@ proxy = (proxy_ip, proxy_port, secret)
 
 if __name__ == '__main__':
     if mode == "dev":
-        logger.info("Dev mode select")
+        logger.info("Dev mode select, now creating controller")
         proxy_ip = config['Telegram']['proxy_ip']
         proxy_port = int(config['Telegram']['proxy_port'])
         secret = config['Telegram']['secret']
         proxy = (proxy_ip, proxy_port, secret)
-        controller = Controller(session, api_id, api_hash, channels, mode="dev", proxy=proxy)
+        controller = Controller(session, api_id, api_hash, mode="dev", proxy=proxy)
     elif mode == "prod":
-        logger.info("Prod mode select")
-        controller = Controller(session, api_id, api_hash, channels, mode="prod", proxy=None)
+        logger.info("Prod mode select, now creating controller")
+        controller = Controller(session, api_id, api_hash, mode="prod", proxy=None)
