@@ -1,4 +1,5 @@
 from datetime import date, time, datetime
+import pytz
 import asyncio
 
 from utils.utils import get_logger
@@ -8,6 +9,7 @@ from telethon.sync import TelegramClient, events, utils
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.types import Message
+from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
 from telethon import connection
 
 logger = get_logger()
@@ -58,6 +60,7 @@ class Controller:
             self.client.run_until_disconnected()
 
     async def forward_album_legacy(self, event):
+        await event.mark_read()
         pair = (event.chat_id, event.grouped_id)
         if pair in self.albums:
             self.albums[pair].append(event.message)
@@ -72,19 +75,20 @@ class Controller:
         await self.client.send_file('lazycat90210', medias, caption='✅ [Сохранёнки](https://t.me/savedmemess)')
 
     async def forward_msg(self, event):
+        await event.mark_read()
         logger.info('%s %s', "Event", str(event))
         sender = await event.get_sender()
         logger.info('%s %s', "Recieved new message for forwarding from", str(sender.username))
         msg = event.message
         logger.info('%s %s', "Message", str(msg))
-        if msg.media is not None and (type(msg.media) == 'MessageMediaPhoto'
-                                      or type(msg.media) == 'MessageMediaDocument'):
+        if msg.media is not None and (isinstance(msg.media, MessageMediaPhoto)
+                                      or isinstance(msg.media, MessageMediaDocument)):
             logger.info('Message contains media photo or video')
             media = msg.media
             await self.client.send_file('lazycat90210', media,
                                         caption='✅ [Сохранёнки](https://t.me/savedmemess)')
         else:
-            logger.info("Message doesn't contain some media")
+            logger.info("Message doesn't contain media photo or video")
             if msg.message.lower() == 'help':
                 logger.info('Message is help request')
                 await event.respond(f'help')
@@ -93,7 +97,7 @@ class Controller:
                 try:
                     channels = self.database.getAllChannels()
                     response = "Now is listening following channels:\n" + "\n".join(map(str, channels))
-                    logger.error(response)
+                    logger.info(response)
                     await event.respond(message=response, link_preview=False)
                 except Exception as ex:
                     error_msg = "Failed to get chanel list with exception: " + str(ex)
@@ -107,11 +111,11 @@ class Controller:
                     if self.database.getChannelByID(channel_entity.id) is None:
                         channel = Channel(channel_entity.id, channel_entity.title, channel_url, True)
                         self.database.addChannel(channel)
-                        success_msg = channel_entity.title + ' was added to database'
+                        success_msg = channel_entity.title + ' was added to database. Dumping will start at 8:00 GMT+3'
                         logger.info(success_msg)
                         await event.respond(success_msg)
                     else:
-                        error_msg = 'channel with ID ' + str(channel_entity.id) + ' already in database'
+                        error_msg = 'Channel with ID ' + str(channel_entity.id) + ' already in database'
                         logger.error(error_msg)
                         await event.respond(error_msg)
                 except Exception as ex:
@@ -120,6 +124,23 @@ class Controller:
                     await event.respond(error_msg)
             elif msg.message.lower().startswith('delete'):
                 logger.info('Message is request to delete channel from list')
+                try:
+                    channel_id = msg.message.lower().split(' ')[1]
+                    if self.database.getChannelByID(channel_id) is not None:
+                        self.database.delChannelByID(channel_id)
+                        success_msg = channel_id + ', channel with this id was successfully deleted from the database.' \
+                                                   'Media from this channel will be posted until 8:00 GMT+3'
+                        logger.info(success_msg)
+                        await event.respond(success_msg)
+                    else:
+                        error_msg = 'Channel with ID ' + str(channel_id) + ' not in database'
+                        logger.error(error_msg)
+                        await event.respond(error_msg)
+
+                except Exception as ex:
+                    error_msg = "Failed to delete channel from list with exception: " + str(ex)
+                    logger.error(error_msg)
+                    await event.respond(error_msg)
 
     async def join_channel(self, channels):
         for channel_url in channels:
@@ -142,8 +163,9 @@ class Controller:
 
     async def dump_channels(self):
         while True:
-            current_time = datetime.time(datetime.now()).strftime("%H:%M:%S")
-            # if current_time == "09:00:00":
+            current_time_utc = datetime.time(datetime.now(pytz.utc)).strftime("%H:%M")
+            if current_time_utc == "05:00":
+                logger.info('Now 08:00 GMT+3. Task#1 - clear messages table')
 
             channels = self.database.getAllChannels()
             for channel in channels:

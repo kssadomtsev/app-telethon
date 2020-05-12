@@ -2,10 +2,11 @@ import os
 import configparser
 
 from sqlalchemy import create_engine
-from sqlalchemy import Table, Column, String, MetaData, Integer, Boolean, Date
+from sqlalchemy import Table, Column, String, MetaData, Integer, Boolean, Date, PickleType
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.mutable import Mutable
 
 from utils.utils import get_logger
 
@@ -30,6 +31,7 @@ channels_init = text(""" INSERT INTO channels (channel_id, title, link, enable)
              VALUES ('1019255153', 'картинки-картиночки', 'https://t.me/ny_privetik', True), 
              ('1103602213', 'KrololoPower', 'https://t.me/Krololochannel', True) """)
 
+
 class Database:
     engine = create_engine(database_uri)
     Session = sessionmaker(engine)
@@ -42,7 +44,13 @@ class Database:
 
     revision_table = Table('revisions', meta,
                            Column('channel_id', Integer, primary_key=True),
-                           Column('date', Date, primary_key= True))
+                           Column('date', Date, primary_key=True))
+
+    posts_table = Table('posts', meta,
+                        Column('channel_id', Integer, primary_key=True),
+                        Column('message_id', Integer, primary_key=True),
+                        Column('media', PickleType),
+                        Column('posted', Boolean, default=False))
 
     def __init__(self):
         self.connection = self.engine.connect()
@@ -67,7 +75,7 @@ class Database:
 
     def getRevisionByIDAndDate(self, channel_id, date):
         session = self.Session()
-        r = session.query(Revision).filter(Revision.channel_id == channel_id).filter(Revision.date==date).first()
+        r = session.query(Revision).filter(Revision.channel_id == channel_id).filter(Revision.date == date).first()
         session.expunge_all()
         session.close()
         return r
@@ -82,9 +90,9 @@ class Database:
     def delChannelByID(self, channel_id):
         session = self.Session()
         r = session.query(Channel).filter(Channel.channel_id == channel_id).first()
-        session.expunge_all()
+        session.delete(r)
+        session.commit()
         session.close()
-        return r
 
     def getAllChannels(self):
         session = self.Session()
@@ -126,7 +134,8 @@ class Channel(Base):
         self.enable = enable
 
     def __repr__(self):
-        return "<Channel(id='%s', title='%s', link='%s' enable='%s')>" % (self.channel_id, self.title, self.link, self.enable)
+        return "<Channel(id='%s', title='%s', link='%s' enable='%s')>" % (
+            self.channel_id, self.title, self.link, self.enable)
 
 
 class Revision(Base):
@@ -141,3 +150,22 @@ class Revision(Base):
 
     def __repr__(self):
         return "<Revision(channel_id='%s', date='%s')>" % (self.channel_id, self.date)
+
+
+class Post(Base):
+    """Model for storing post"""
+    __tablename__ = 'posts'
+    channel_id = Column(Integer, primary_key=True)
+    message_id = Column(Integer, primary_key=True)
+    media = Column(PickleType)
+    posted = Column(Boolean)
+
+    def __init__(self, channel_id, message_id, media, posted):
+        self.channel_id = channel_id
+        self.message_id = message_id
+        self.media = media
+        self.posted = posted
+
+    def __repr__(self):
+        return "<Post(channel_id='%s', message_id='%s', media='%s' posted='%s')>" % \
+               (self.channel_id, self.message_id, self.media, self.posted)
