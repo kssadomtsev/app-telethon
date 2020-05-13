@@ -34,7 +34,7 @@ channels_init = text(""" INSERT INTO channels (channel_id, title, link, enable)
 
 class Database:
     engine = create_engine(database_uri)
-    Session = sessionmaker(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
     meta = MetaData(engine)
     channels_table = Table('channels', meta,
                            Column('channel_id', Integer, primary_key=True),
@@ -60,6 +60,8 @@ class Database:
             self.engine.execute(channels_init)
         if not self.engine.dialect.has_table(self.engine, 'revisions'):
             self.revision_table.create()
+        if not self.engine.dialect.has_table(self.engine, 'posts'):
+            self.posts_table.create()
 
     def addChannel(self, channel):
         session = self.Session()
@@ -70,6 +72,12 @@ class Database:
     def addRevision(self, revision):
         session = self.Session()
         session.add(revision)
+        session.commit()
+        session.close()
+
+    def addPosts(self, posts):
+        session = self.Session()
+        session.add_all(posts)
         session.commit()
         session.close()
 
@@ -114,6 +122,13 @@ class Database:
         for revision in revisions:
             print(revision)
         session.close()
+
+    def clearPosts(self):
+        session = self.Session()
+        r = session.query(Post).delete()
+        session.commit()
+        session.close()
+        return r
 
 
 Base = declarative_base()
