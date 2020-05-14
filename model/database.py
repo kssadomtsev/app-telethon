@@ -6,6 +6,7 @@ from sqlalchemy import Table, Column, String, MetaData, Integer, Boolean, Date, 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql.expression import func
 from sqlalchemy.ext.mutable import Mutable
 
 from utils.utils import get_logger
@@ -81,6 +82,15 @@ class Database:
         session.commit()
         session.close()
 
+    def getRandomPost(self):
+        session = self.Session()
+        r = session.query(Post).filter(Post.posted == False).order_by(func.random()).first()
+        r.posted = True
+        session.commit()
+        session.expunge_all()
+        session.close()
+        return r
+
     def getRevisionByIDAndDate(self, channel_id, date):
         session = self.Session()
         r = session.query(Revision).filter(Revision.channel_id == channel_id).filter(Revision.date == date).first()
@@ -121,6 +131,13 @@ class Database:
         revisions = session.query(Revision).all()
         for revision in revisions:
             print(revision)
+        session.close()
+
+    def printAllPosts(self):
+        session = self.Session()
+        posts = session.query(Post).all()
+        for post in posts:
+            print(post)
         session.close()
 
     def clearPosts(self):
