@@ -9,6 +9,7 @@ from model.database import Database, Channel, Post, Revision
 from telethon.sync import TelegramClient, events, utils
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import GetHistoryRequest
+from telethon.tl.functions.channels import GetMessagesRequest
 from telethon.tl.types import Message
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
 from telethon import connection
@@ -21,6 +22,7 @@ loop = asyncio.get_event_loop()
 
 class Controller:
     albums = {}
+    active_posting = True
 
     def __init__(self, session, api_id, api_hash, mode,
                  proxy=None):
@@ -46,20 +48,9 @@ class Controller:
                                                             func=lambda e: e.grouped_id))
             self.client.add_event_handler(self.forward_msg, events.NewMessage(from_users=('@Ordicyn', '@lazycat90210'),
                                                                               func=lambda e: e.grouped_id is None))
-            # loop.run_until_complete(self.periodic_tasks())
-            # cat = self.client.get_entity('lazycat90210')
-            # print(cat)
-            # cat = self.client.get_input_entity('lazycat90210')
-            # print(cat)
-            # self.client.send_message('lazycat90210', '`too`')
-            # dialogs = self.client.get_dialogs()
-            # print(dialogs)
-            # logger.info(self.client.get_me().stringify())
-            # logger.info('(Press Ctrl+C to stop this)')
-            # self.database.fetchAllChannels()
             loop.create_task(self.print_forever())
-            loop.create_task(self.dump_channels())
-            loop.create_task(self.do_post())
+            loop.create_task(self.do_dump_schedule())
+            loop.create_task(self.do_post_schedule())
             self.client.run_until_disconnected()
 
     async def forward_album_legacy(self, event):
@@ -75,7 +66,7 @@ class Controller:
         medias = []
         for msg in messages:
             medias.append(msg.media)
-        await self.client.send_file('lazycat90210', medias, caption='✅ [Сохранёнки](https://t.me/savedmemess)')
+        await self.client.send_file('test_channel_5', medias, caption='✅ [Сохранёнки](https://t.me/savedmemess)')
 
     async def forward_msg(self, event):
         await event.mark_read()
@@ -88,7 +79,7 @@ class Controller:
                                       or isinstance(msg.media, MessageMediaDocument)):
             logger.info('Message contains media photo or video')
             media = msg.media
-            await self.client.send_file('lazycat90210', media,
+            await self.client.send_file('test_channel_5', media,
                                         caption='✅ [Сохранёнки](https://t.me/savedmemess)')
         else:
             logger.info("Message doesn't contain media photo or video")
@@ -142,6 +133,47 @@ class Controller:
                     error_msg = "Failed to delete channel from list with exception: " + str(ex)
                     logger.error(error_msg)
                     await event.respond(error_msg)
+            elif msg.message.lower().startswith('dump'):
+                logger.info('Message is request dump messages from channel manually')
+                try:
+                    await self.do_dump()
+                    success_msg = 'Request dump messages from channel manually was handled success'
+                    logger.info(success_msg)
+                    await event.respond(success_msg)
+                except Exception as ex:
+                    error_msg = "Failed dump messages from channels " + str(ex)
+                    logger.error(error_msg)
+                    await event.respond(error_msg)
+            elif msg.message.lower().startswith('post'):
+                logger.info('Message is request to do 3 posts manually')
+                try:
+                    await self.do_post()
+                    success_msg = 'Request to do 3 posts manually was handled success'
+                    logger.info(success_msg)
+                    await event.respond(success_msg)
+                except Exception as ex:
+                    error_msg = "Failed to do 3 posts manually " + str(ex)
+                    logger.error(error_msg)
+                    await event.respond(error_msg)
+            elif msg.message.lower().startswith('start'):
+                logger.info('Message is request to start automatic posting')
+                if self.active_posting is True:
+                    logger.info('Automatic posting is active already')
+                    await event.respond('Automatic posting is active already')
+                else:
+                    self.active_posting = True
+                    logger.info('Automatic posting is set true')
+                    await event.respond('Automatic posting is set true')
+            elif msg.message.lower().startswith('stop'):
+                logger.info('Message is request to stop automatic posting')
+                if self.active_posting is False:
+                    logger.info('Automatic posting is stop already')
+                    await event.respond('Automatic stop is active already')
+                else:
+                    self.active_posting = False
+                    logger.info('Automatic posting stopped')
+                    await event.respond('Automatic posting stopped')
+
 
     async def join_channel(self):
         channels = self.database.getAllChannels()
@@ -152,8 +184,7 @@ class Controller:
             except Exception as ex:
                 logger.error('%s %s %s', 'failed join to the channel', channel.title, str(ex))
 
-
-    async def dump_channels(self):
+    async def do_dump_schedule(self):
         while True:
             logger.info("Get current time in UTC")
             current_time_utc = datetime.time(datetime.now(pytz.utc))
@@ -171,120 +202,127 @@ class Controller:
                                                 current_time_utc)).total_seconds()
             logger.info('%s %s', "Now go sleep for: ", str(remaining))
             await asyncio.sleep(remaining)
-            logger.info('Dump process wake up!')
-            logger.info('Now 08:00 GMT+3. Task#1 - clear messages table')
+            logger.info('Now 08:00 GMT+3. Dump process wake up!')
             try:
-                r = self.database.clearPosts()
-                logger.info('%s %s', str(r), ' posts was cleared')
+                await self.do_dump()
             except Exception as ex:
-                error_msg = "Failed to clear messages table with exception: " + str(ex)
+                error_msg = "Failed dump messages from channels " + str(ex)
                 logger.error(error_msg)
-            logger.info('Task#2 - join to channels')
-            try:
-                await self.join_channel()
-            except Exception as ex:
-                error_msg = "Failed to join to channels with exception: " + str(ex)
-                logger.error(error_msg)
-            logger.info('Task#3 - Get last 200 messages from channels in date range'
-                        ' [current date-1 21:00; current date-2 21:00]')
-            # Current date in UTC
-            current_date = datetime.date(datetime.now(pytz.utc))
-            logger.info('%s %s', 'Current date in UTC ', str(current_date))
-            # 18:00 in UTC = 21:00 in GMT + 3
-            time_dump = time(hour=18, minute=0)
-            # before datetime = current date-1 21:00
-            dt_before = datetime.combine(current_date - timedelta(days=1), time_dump).replace(tzinfo=pytz.UTC)
-            logger.info('%s %s', 'before datetime = current date-1 21:00 ', str(dt_before))
-            # after datetime = current date-2 21:00
-            dt_after = datetime.combine(current_date - timedelta(days=2), time_dump).replace(tzinfo=pytz.UTC)
-            logger.info('%s %s', 'after datetime = current date-2 21:00 ', str(dt_after))
-            # global posts list
-            posts_list_global = []
-            try:
-                logger.info('Get actual channel list')
-                channels = self.database.getAllChannels()
-                for channel in channels:
-                    logger.info('%s %s', 'Try to dump message from channel', channel.title)
-                    try:
-                        logger.info('At first we need to be sure that channel hasnt been dumped yet')
-                        if self.database.getRevisionByIDAndDate(channel.channel_id, current_date) is None:
-                            logger.info('This channel hasnt been dumped yet')
-                            logger.info('Init telethon request')
-                            channel_entity = await self.client.get_input_entity(channel.channel_id)
-                            posts_list = []
-                            # Get first 100 messages
-                            logger.info('Get first 100 messages')
-                            posts = await self.client(GetHistoryRequest(
-                                peer=channel_entity,
-                                limit=100,
-                                offset_date=dt_before,
-                                offset_id=0,
-                                max_id=0,
-                                min_id=0,
-                                add_offset=0,
-                                hash=0))
-                            logger.info('%s %s', 'Got messages: ', str(len(posts.messages)))
-                            posts_list.extend(posts.messages)
-                            offset_id = posts_list[99].id
-                            logger.info('%s %s', 'Offset message id: ', str(offset_id))
-                            logger.info('Get another 100 messages')
-                            posts = await self.client(GetHistoryRequest(
-                                peer=channel_entity,
-                                limit=100,
-                                offset_date=dt_before,
-                                offset_id=offset_id,
-                                max_id=0,
-                                min_id=0,
-                                add_offset=0,
-                                hash=0))
-                            logger.info('%s %s', 'Got messages: ', str(len(posts.messages)))
-                            posts_list.extend(posts.messages)
-                            logger.info('%s %s', 'Totally got messages: ', str(len(posts_list)))
-                            logger.info(
-                                'Filter messages that not album with media photo or video and text without invite link and not reply')
-                            filtered_posts_list = list(
-                                filter(lambda msg: (dt_after <= msg.date and dt_before >= msg.date)
-                                                   and (msg.grouped_id is None)
-                                                   and (msg.media is not None)
-                                                   and (msg.reply_markup is None)
-                                                   and (isinstance(msg.media, MessageMediaPhoto)
-                                                        or isinstance(msg.media, MessageMediaDocument))
-                                                   and (not any(
-                                    s in msg.message for s in ["https", ".shop", ".com", ".ru"])), posts_list))
-                            logger.info('%s %s', 'After filtering  messages list contain: ',
-                                        str(len(filtered_posts_list)))
-                            # for x in filtered_posts_list: logger.info(str(x))
-                            logger.info('Sort list by views and save 50% first more popular post to global')
-                            filtered_posts_list.sort(key=lambda msg: msg.views, reverse=True)
-                            # for x in filtered_posts_list[:int(len(filtered_posts_list)/2)]: logger.info(str(x))
-                            posts_list_global.extend(filtered_posts_list[:int(len(filtered_posts_list) / 2)])
-                            logger.info('%s %s', 'Add revision record about channel for this date', channel.title)
-                            revision = Revision(channel.channel_id, current_date)
-                            self.database.addRevision(revision)
-                        else:
-                            logger.error('Channel already dumped!!!')
-                    except Exception as ex:
-                        error_msg = "Failed to dump message from channel " + channel.title + " : " + str(ex)
-                        logger.error(error_msg)
-            except Exception as ex:
-                error_msg = "Failed to get last 200 messages from channels in general: " + str(ex)
-                logger.error(error_msg)
-            logger.info('%s %s', 'Totally from all channels got messages: ', str(len(posts_list_global)))
-            logger.info('Task#4 - Now we should cast class Message to Posts')
-            logger.info('Now we should cast class Message to Post')
-            # logger.info(posts_list_global[0])
-            filtered_posts_list_global_in_post = list(
-                map(lambda msg: Post(msg.id, msg.to_id.channel_id, pickle.dumps(msg.media), False), posts_list_global))
-            #for x in filtered_posts_list_global_in_post: print(x)
-            self.database.addPosts(filtered_posts_list_global_in_post)
-            # for post in filtered_posts_list_global_in_post:
-            #     await self.client.send_file('test_channel_5', pickle.loads(post.media),
-            #                                 caption='✅ [Сохранёнки](https://t.me/savedmemess)')
-            #     await asyncio.sleep(5)
-            #    await asyncio.sleep(80)
 
-    async def do_post(self):
-        while True:
+    async def do_dump(self):
+        logger.info('Task#1 - clear messages table')
+        try:
+            r = self.database.clearPosts()
+            logger.info('%s %s', str(r), ' posts was cleared')
+        except Exception as ex:
+            error_msg = "Failed to clear messages table with exception: " + str(ex)
+            logger.error(error_msg)
+        logger.info('Task#2 - join to channels')
+        try:
+            await self.join_channel()
+        except Exception as ex:
+            error_msg = "Failed to join to channels with exception: " + str(ex)
+            logger.error(error_msg)
+        logger.info('Task#3 - Get last 200 messages from channels in date range'
+                    ' [current date-1 21:00; current date-2 21:00]')
+        # Current date in UTC
+        current_date = datetime.date(datetime.now(pytz.utc))
+        logger.info('%s %s', 'Current date in UTC ', str(current_date))
+        # 18:00 in UTC = 21:00 in GMT + 3
+        time_dump = time(hour=18, minute=0)
+        # before datetime = current date-1 21:00
+        dt_before = datetime.combine(current_date - timedelta(days=1), time_dump).replace(tzinfo=pytz.UTC)
+        logger.info('%s %s', 'before datetime = current date-1 21:00 ', str(dt_before))
+        # after datetime = current date-2 21:00
+        dt_after = datetime.combine(current_date - timedelta(days=2), time_dump).replace(tzinfo=pytz.UTC)
+        logger.info('%s %s', 'after datetime = current date-2 21:00 ', str(dt_after))
+        # global posts list
+        posts_list_global = []
+        try:
+            logger.info('Get actual channel list')
+            channels = self.database.getAllChannels()
+            for channel in channels:
+                logger.info('%s %s', 'Try to dump message from channel', channel.title)
+                try:
+                    logger.info('This channel hasnt been dumped yet')
+                    logger.info('Init telethon request')
+                    channel_entity = await self.client.get_input_entity(channel.channel_id)
+                    posts_list = []
+                    # Get first 100 messages
+                    logger.info('Get first 100 messages')
+                    posts = await self.client(GetHistoryRequest(
+                        peer=channel_entity,
+                        limit=100,
+                        offset_date=dt_before,
+                        offset_id=0,
+                        max_id=0,
+                        min_id=0,
+                        add_offset=0,
+                        hash=0))
+                    logger.info('%s %s', 'Got messages: ', str(len(posts.messages)))
+                    posts_list.extend(posts.messages)
+                    offset_id = posts_list[99].id
+                    logger.info('%s %s', 'Offset message id: ', str(offset_id))
+                    logger.info('Get another 100 messages')
+                    posts = await self.client(GetHistoryRequest(
+                        peer=channel_entity,
+                        limit=100,
+                        offset_date=dt_before,
+                        offset_id=offset_id,
+                        max_id=0,
+                        min_id=0,
+                        add_offset=0,
+                        hash=0))
+                    logger.info('%s %s', 'Got messages: ', str(len(posts.messages)))
+                    posts_list.extend(posts.messages)
+                    logger.info('%s %s', 'Totally got messages: ', str(len(posts_list)))
+                    logger.info(
+                        'Filter messages that not album with media photo or video and text without invite link and not reply')
+                    filtered_posts_list = list(
+                        filter(lambda msg: (dt_after <= msg.date and dt_before >= msg.date)
+                                           and (msg.grouped_id is None)
+                                           and (msg.media is not None)
+                                           and (msg.reply_markup is None)
+                                           and (isinstance(msg.media, MessageMediaPhoto)
+                                                or isinstance(msg.media, MessageMediaDocument))
+                                           and (not any(
+                            s in msg.message for s in ["https", ".shop", ".com", ".ru"])), posts_list))
+                    logger.info('%s %s', 'After filtering  messages list contain: ',
+                                str(len(filtered_posts_list)))
+                    # for x in filtered_posts_list: logger.info(str(x))
+                    logger.info('Sort list by views and save 50% first more popular post to global')
+                    filtered_posts_list.sort(key=lambda msg: msg.views, reverse=True)
+                    # for x in filtered_posts_list[:int(len(filtered_posts_list)/2)]: logger.info(str(x))
+                    posts_list_global.extend(filtered_posts_list[:int(len(filtered_posts_list) / 2)])
+                    logger.info('%s %s', 'Add revision record about channel for this date', channel.title)
+                    revision = Revision(channel.channel_id, current_date)
+                    try:
+                        self.database.addRevision(revision)
+                    except Exception as ex:
+                        error_msg = "Failed to store revision to database with exception " + str(ex)
+                        logger.error(error_msg)
+                except Exception as ex:
+                    error_msg = "Failed to dump message from channel " + channel.title + " : " + str(ex)
+                    logger.error(error_msg)
+        except Exception as ex:
+            error_msg = "Failed to get last 200 messages from channels in general: " + str(ex)
+            logger.error(error_msg)
+        logger.info('%s %s', 'Totally from all channels got messages: ', str(len(posts_list_global)))
+        logger.info('Task#4 - Now we should cast class Message to Posts')
+        logger.info('Now we should cast class Message to Post')
+        # logger.info(posts_list_global[0])
+        filtered_posts_list_global_in_post = list(
+            map(lambda msg: Post(msg.to_id.channel_id, msg.id, "", False), posts_list_global))
+        # for x in filtered_posts_list_global_in_post: print(x)
+        self.database.addPosts(filtered_posts_list_global_in_post)
+        # for post in filtered_posts_list_global_in_post:
+        #     await self.client.send_file('test_channel_5', pickle.loads(post.media),
+        #                                 caption='✅ [Сохранёнки](https://t.me/savedmemess)')
+        #     await asyncio.sleep(5)
+        #    await asyncio.sleep(80)
+
+    async def do_post_schedule(self):
+        while self.active_posting is True:
             logger.info("Function post 2 times in hour 3 random media from database in period 09:00-23:00 GMT+3 "
                         "or 06:00-21:00 UTC")
             logger.info("Get current time in UTC")
@@ -295,37 +333,56 @@ class Controller:
             if current_time_utc < after_time_utc:
                 logger.info("Current time less than 09:00 GMT+3(06:00 UTC)")
                 remaining = (datetime.combine(datetime.date(datetime.now(pytz.utc)), after_time_utc)
-                                               - datetime.combine(datetime.date(datetime.now(pytz.utc)),
-                                                                  current_time_utc)).total_seconds()
+                             - datetime.combine(datetime.date(datetime.now(pytz.utc)),
+                                                current_time_utc)).total_seconds()
                 logger.info('%s %s', "Now go sleep for: ", str(remaining))
                 await asyncio.sleep(remaining)
             if current_time_utc > before_time_utc:
                 logger.info("Current time greater than 08:00 GMT+3(05:00 UTC)")
                 remaining = (datetime.combine(datetime.date(datetime.now(pytz.utc)) + timedelta(days=1), after_time_utc)
-                                  - datetime.combine(datetime.date(datetime.now(pytz.utc)),
-                                                    current_time_utc)).total_seconds()
+                             - datetime.combine(datetime.date(datetime.now(pytz.utc)),
+                                                current_time_utc)).total_seconds()
                 logger.info('%s %s', "Now go sleep for: ", str(remaining))
                 await asyncio.sleep(remaining)
             else:
-                self.database.printAllPosts()
+                # self.database.printAllPosts()
                 logger.info("Time to post!")
-                for i in range(0, 3):
-                    try:
-                        post = self.database.getRandomPost()
-                        logger.info("Select from database following random post:")
-                        logger.info(str(post))
-                        await self.client.send_file('test_channel_5', pickle.loads(post.media),
-                                            caption='✅ [Сохранёнки](https://t.me/savedmemess)')
-                    except Exception as ex:
-                        error_msg = "Failed to post exception: " + str(ex)
-                        logger.error(error_msg)
-                    finally:
-                        await asyncio.sleep(5)
-                logger.info("Done! Now sleep for 30 minutes")
-                await asyncio.sleep(1800)
+                await self.do_post()
+                logger.info("Done! Now sleep for 29 minutes")
+                await asyncio.sleep(1740)
 
+    async def do_post(self):
+        for i in range(0, 3):
+            try:
+                post = self.database.getRandomPost()
+                logger.info("Select from database following random post:")
+                logger.info(str(post))
+                logger.info("Trying to retrive message from channel:")
+                channel_entity = await self.client.get_input_entity(post.channel_id)
+                logger.info(str(channel_entity))
+                msg = await self.client(GetMessagesRequest(
+                    channel=channel_entity,
+                    id=[post.message_id]
+                ))
+                logger.info(str(msg))
+                media = msg.messages[0].media
+                await self.client.send_file('test_channel_5', media,
+                                            caption='✅ [Сохранёнки](https://t.me/savedmemess)')
+                logger.info("Post was send. Now mark it in database as marked")
+                try:
+                    self.database.setPostPosted(post)
+                except Exception as ex:
+                    error_msg = "Failed with exception: " + str(ex)
+                    logger.error(error_msg)
+            except Exception as ex:
+                error_msg = "Failed to post exception: " + str(ex)
+                logger.error(error_msg)
+            finally:
+                await asyncio.sleep(5)
 
     async def print_forever(self):
         while True:
-            print("Await(alive) function")
+            logger.info("Await(alive) function")
+            current_time_utc = datetime.time(datetime.now(pytz.utc))
+            logger.info('%s %s', 'Now: ', str(current_time_utc))
             await asyncio.sleep(60)

@@ -50,7 +50,7 @@ class Database:
     posts_table = Table('posts', meta,
                         Column('channel_id', Integer, primary_key=True),
                         Column('message_id', Integer, primary_key=True),
-                        Column('media', PickleType),
+                        Column('media', String),
                         Column('posted', Boolean, default=False))
 
     def __init__(self):
@@ -85,11 +85,16 @@ class Database:
     def getRandomPost(self):
         session = self.Session()
         r = session.query(Post).filter(Post.posted == False).order_by(func.random()).first()
-        r.posted = True
-        session.commit()
         session.expunge_all()
         session.close()
         return r
+
+    def setPostPosted(self, post):
+        session = self.Session()
+        r = session.query(Post).filter(Post.channel_id == post.channel_id  and Post.message_id == post.message_id).first()
+        r.posted = True
+        session.commit()
+        session.close()
 
     def getRevisionByIDAndDate(self, channel_id, date):
         session = self.Session()
@@ -189,7 +194,7 @@ class Post(Base):
     __tablename__ = 'posts'
     channel_id = Column(Integer, primary_key=True)
     message_id = Column(Integer, primary_key=True)
-    media = Column(PickleType)
+    media = Column(String)
     posted = Column(Boolean)
 
     def __init__(self, channel_id, message_id, media, posted):
