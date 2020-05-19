@@ -1,18 +1,25 @@
 from datetime import date, time, datetime, timedelta
 import pytz
 import asyncio
-import pickle
+import configparser
+import codecs
 
 from utils.utils import get_logger
 from model.database import Database, Channel, Post, Revision
 
-from telethon.sync import TelegramClient, events, utils
+from telethon.sync import TelegramClient, events
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.functions.channels import GetMessagesRequest
-from telethon.tl.types import Message
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
 from telethon import connection
+
+# Read config data
+config = configparser.ConfigParser()
+config.read("config.ini")
+
+# Apply config values to vars
+chat = config['Bot']['chat']
 
 logger = get_logger()
 
@@ -22,7 +29,7 @@ loop = asyncio.get_event_loop()
 
 class Controller:
     albums = {}
-    active_posting = True
+    active_posting = False
 
     def __init__(self, session, api_id, api_hash, mode,
                  proxy=None):
@@ -54,6 +61,7 @@ class Controller:
             self.client.run_until_disconnected()
 
     async def forward_album_legacy(self, event):
+        logger.info('Recieved message with album')
         await event.mark_read()
         pair = (event.chat_id, event.grouped_id)
         if pair in self.albums:
@@ -62,11 +70,12 @@ class Controller:
         self.albums[pair] = [event.message]
         await asyncio.sleep(0.3)
         messages = self.albums.pop(pair)
+        logger.info('%s %s', 'Album contains photos:', str(len(messages)))
         await event.respond(f'Got {len(messages)} photos!')
         medias = []
         for msg in messages:
             medias.append(msg.media)
-        await self.client.send_file('test_channel_5', medias, caption='✅ [Сохранёнки](https://t.me/savedmemess)')
+        await self.client.send_file(chat, medias, caption='✅ [Сохранёнки](https://t.me/savedmemess)')
 
     async def forward_msg(self, event):
         await event.mark_read()
@@ -79,13 +88,15 @@ class Controller:
                                       or isinstance(msg.media, MessageMediaDocument)):
             logger.info('Message contains media photo or video')
             media = msg.media
-            await self.client.send_file('test_channel_5', media,
+            await self.client.send_file(chat, media,
                                         caption='✅ [Сохранёнки](https://t.me/savedmemess)')
         else:
             logger.info("Message doesn't contain media photo or video")
             if msg.message.lower() == 'help':
                 logger.info('Message is help request')
-                await event.respond(f'help')
+                with codecs.open('help.html', "r", encoding='utf-8') as help_file:
+                    help_msg = help_file.read()
+                    await event.respond(help_msg, parse_mode='html')
             elif msg.message.lower() == 'list':
                 logger.info('Message is channels list request')
                 try:
@@ -133,7 +144,7 @@ class Controller:
                     error_msg = "Failed to delete channel from list with exception: " + str(ex)
                     logger.error(error_msg)
                     await event.respond(error_msg)
-            elif msg.message.lower().startswith('dump'):
+            elif msg.message.lower() == 'dump':
                 logger.info('Message is request dump messages from channel manually')
                 try:
                     await self.do_dump()
@@ -144,7 +155,7 @@ class Controller:
                     error_msg = "Failed dump messages from channels " + str(ex)
                     logger.error(error_msg)
                     await event.respond(error_msg)
-            elif msg.message.lower().startswith('post'):
+            elif msg.message.lower() == 'post':
                 logger.info('Message is request to do 3 posts manually')
                 try:
                     await self.do_post()
@@ -155,7 +166,7 @@ class Controller:
                     error_msg = "Failed to do 3 posts manually " + str(ex)
                     logger.error(error_msg)
                     await event.respond(error_msg)
-            elif msg.message.lower().startswith('start'):
+            elif msg.message.lower() == 'start':
                 logger.info('Message is request to start automatic posting')
                 if self.active_posting is True:
                     logger.info('Automatic posting is active already')
@@ -164,16 +175,39 @@ class Controller:
                     self.active_posting = True
                     logger.info('Automatic posting is set true')
                     await event.respond('Automatic posting is set true')
-            elif msg.message.lower().startswith('stop'):
+            elif msg.message.lower() == 'stop':
                 logger.info('Message is request to stop automatic posting')
                 if self.active_posting is False:
                     logger.info('Automatic posting is stop already')
-                    await event.respond('Automatic stop is active already')
+                    await event.respond('Automatic posting is stop already')
                 else:
                     self.active_posting = False
                     logger.info('Automatic posting stopped')
                     await event.respond('Automatic posting stopped')
-
+            elif msg.message.lower() == 'stats':
+                logger.info('Message is request to get bot statistic')
+                try:
+                    logger.info('Get information about posts database')
+                    total, posted, not_posted = self.database.getPostsInfo()
+                    msg = 'Bot statistic:\nPost database contains posts: ' + str(total) + '\nPosted count: ' + str(
+                        posted) + '\nNot posted count: ' + str(not_posted) + '\nInformation about last 10 revisions:\n'
+                    logger.info('Get information about last 10 revisions')
+                    revisions = self.database.getLast10Revisions()
+                    for revision in revisions:
+                        msg += 'Channel ID: ' + str(revision[0]) + ', channel name: ' + revision[1] + ', collected: ' \
+                               + str(revision[2]) + ', time(GMT+3): ' \
+                               + str(
+                            revision[3].astimezone(pytz.timezone("Europe/Moscow")).strftime("%Y-%m-%d %H:%M:%S")) + '\n'
+                    print(revisions)
+                    logger.info(msg)
+                    await event.respond(msg)
+                except Exception as ex:
+                    error_msg = "Failed to to get bot statistic " + str(ex)
+                    logger.error(error_msg)
+                    await event.respond(error_msg)
+            else:
+                logger.info('Command is unrecognized. Use help command')
+                await event.respond('Command is unrecognized. Use help command')
 
     async def join_channel(self):
         channels = self.database.getAllChannels()
@@ -295,7 +329,7 @@ class Controller:
                     # for x in filtered_posts_list[:int(len(filtered_posts_list)/2)]: logger.info(str(x))
                     posts_list_global.extend(filtered_posts_list[:int(len(filtered_posts_list) / 2)])
                     logger.info('%s %s', 'Add revision record about channel for this date', channel.title)
-                    revision = Revision(channel.channel_id, current_date)
+                    revision = Revision(channel.channel_id, datetime.now(pytz.utc), len(filtered_posts_list))
                     try:
                         self.database.addRevision(revision)
                     except Exception as ex:
@@ -366,7 +400,7 @@ class Controller:
                 ))
                 logger.info(str(msg))
                 media = msg.messages[0].media
-                await self.client.send_file('test_channel_5', media,
+                await self.client.send_file(chat, media,
                                             caption='✅ [Сохранёнки](https://t.me/savedmemess)')
                 logger.info("Post was send. Now mark it in database as marked")
                 try:

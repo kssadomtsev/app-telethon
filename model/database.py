@@ -2,12 +2,12 @@ import os
 import configparser
 
 from sqlalchemy import create_engine
-from sqlalchemy import Table, Column, String, MetaData, Integer, Boolean, Date, PickleType
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import desc
+from sqlalchemy import Table, Column, String, MetaData, Integer, Boolean, DateTime, ForeignKey
+from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import func
-from sqlalchemy.ext.mutable import Mutable
 
 from utils.utils import get_logger
 
@@ -44,11 +44,12 @@ class Database:
                            Column('enable', Boolean))
 
     revision_table = Table('revisions', meta,
-                           Column('channel_id', Integer, primary_key=True),
-                           Column('date', Date, primary_key=True))
+                           Column('channel_id', Integer, ForeignKey('channels.channel_id'), primary_key=True),
+                           Column('date_time', DateTime, primary_key=True),
+                           Column('number', Integer))
 
     posts_table = Table('posts', meta,
-                        Column('channel_id', Integer, primary_key=True),
+                        Column('channel_id', Integer, ForeignKey('channels.channel_id'), primary_key=True),
                         Column('message_id', Integer, primary_key=True),
                         Column('media', String),
                         Column('posted', Boolean, default=False))
@@ -91,7 +92,8 @@ class Database:
 
     def setPostPosted(self, post):
         session = self.Session()
-        r = session.query(Post).filter(Post.channel_id == post.channel_id  and Post.message_id == post.message_id).first()
+        r = session.query(Post).filter(
+            Post.channel_id == post.channel_id and Post.message_id == post.message_id).first()
         r.posted = True
         session.commit()
         session.close()
@@ -152,6 +154,23 @@ class Database:
         session.close()
         return r
 
+    def getPostsInfo(self):
+        session = self.Session()
+        total = session.query(Post).count()
+        posted = session.query(Post).filter(Post.posted == True).count()
+        not_posted = session.query(Post).filter(Post.posted == False).count()
+        session.expunge_all()
+        session.close()
+        return total, posted, not_posted
+
+    def getLast10Revisions(self):
+        session = self.Session()
+        result = session.query(Revision.channel_id, Channel.title, Revision.number, Revision.date_time).filter(
+            Revision.channel_id == Channel.channel_id).order_by(desc(Revision.date_time)).limit(10).all()
+        session.expunge_all()
+        session.close()
+        return result
+
 
 Base = declarative_base()
 
@@ -163,6 +182,9 @@ class Channel(Base):
     title = Column(String)
     link = Column(String)
     enable = Column(Boolean)
+
+    revision = relationship('Revision', backref="parent", cascade='all, delete-orphan')
+    post = relationship('Post', backref="parent", cascade='all, delete-orphan')
 
     def __init__(self, channel_id, title, link, enable):
         self.channel_id = channel_id
@@ -178,21 +200,24 @@ class Channel(Base):
 class Revision(Base):
     """Model for revision channel"""
     __tablename__ = 'revisions'
-    channel_id = Column(Integer, primary_key=True)
-    date = Column(Date, primary_key=True)
+    channel_id = Column(Integer, ForeignKey('channels.channel_id', ondelete='CASCADE'), primary_key=True)
+    date_time = Column(DateTime, primary_key=True)
+    number = Column(Integer)
 
-    def __init__(self, channel_id, date):
+    def __init__(self, channel_id, date_time, number):
         self.channel_id = channel_id
-        self.date = date
+        self.date_time = date_time
+        self.number = number
 
     def __repr__(self):
-        return "<Revision(channel_id='%s', date='%s')>" % (self.channel_id, self.date)
+        return "<Revision(channel_id='%s', date_time='%s', number='%s')>" % (
+            self.channel_id, self.date_time, self.number)
 
 
 class Post(Base):
     """Model for storing post"""
     __tablename__ = 'posts'
-    channel_id = Column(Integer, primary_key=True)
+    channel_id = Column(Integer, ForeignKey('channels.channel_id', ondelete='CASCADE'), primary_key=True)
     message_id = Column(Integer, primary_key=True)
     media = Column(String)
     posted = Column(Boolean)
