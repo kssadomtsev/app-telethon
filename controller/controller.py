@@ -202,7 +202,7 @@ class Controller:
                                + str(revision[2]) + ', time(GMT+3): ' \
                                + str(
                             revision[3].astimezone(pytz.timezone("Europe/Moscow")).strftime("%Y-%m-%d %H:%M:%S")) + '\n'
-                    print(revisions)
+                    #print(revisions)
                     logger.info(msg)
                     await event.respond(msg)
                 except Exception as ex:
