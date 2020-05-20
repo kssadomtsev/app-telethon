@@ -21,8 +21,8 @@ config.read("config.ini")
 username = config['Database']['username']
 
 password_db = os.getenv("password_db")
+host = os.getenv("host_db")
 
-host = config['Database']['host']
 port = config['Database']['port']
 database = config['Database']['database']
 
