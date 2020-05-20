@@ -47,7 +47,8 @@ class Controller:
                                          connection=connection.ConnectionTcpMTProxyRandomizedIntermediate)
 
         elif mode == "prod":
-            self.client = TelegramClient(session, api_id, api_hash)
+            self.client = TelegramClient(session, api_id, api_hash, proxy=proxy,
+                                         connection=connection.ConnectionTcpMTProxyRandomizedIntermediate)
         # Use the client in a `with` block. It calls `start/disconnect` automatically.
         self.database = Database()
         with self.client:
