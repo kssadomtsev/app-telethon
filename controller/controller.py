@@ -9,6 +9,7 @@ from model.database import Database, Channel, Post, Revision
 
 from telethon.sync import TelegramClient, events
 from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.functions.channels import LeaveChannelRequest
 from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.functions.channels import GetMessagesRequest
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
@@ -29,7 +30,7 @@ loop = asyncio.get_event_loop()
 
 class Controller:
     albums = {}
-    active_posting = False
+    active_posting = True
 
     def __init__(self, session, api_id, api_hash, mode,
                  proxy=None):
@@ -131,9 +132,12 @@ class Controller:
                 try:
                     channel_id = msg.message.lower().split(' ')[1]
                     if self.database.getChannelByID(channel_id) is not None:
+                        channel_entity = await self.client.get_input_entity(self.database.getChannelByID(channel_id).link)
+                        await self.client(LeaveChannelRequest(
+                            channel=channel_entity))
                         self.database.delChannelByID(channel_id)
                         success_msg = channel_id + ', channel with this id was successfully deleted from the database.' \
-                                                   'Media from this channel will be posted until 8:00 GMT+3'
+                                                   'Media from this channel was deleted too and bot leave channel'
                         logger.info(success_msg)
                         await event.respond(success_msg)
                     else:
@@ -323,10 +327,10 @@ class Controller:
                             s in msg.message for s in ["https", ".shop", ".com", ".ru"])), posts_list))
                     logger.info('%s %s', 'After filtering  messages list contain: ',
                                 str(len(filtered_posts_list)))
-                    # for x in filtered_posts_list: logger.info(str(x))
+                    #for x in filtered_posts_list: logger.info(str(x))
                     logger.info('Sort list by views and save 50% first more popular post to global')
                     filtered_posts_list.sort(key=lambda msg: msg.views, reverse=True)
-                    # for x in filtered_posts_list[:int(len(filtered_posts_list)/2)]: logger.info(str(x))
+                    #for x in filtered_posts_list[:int(len(filtered_posts_list)/2)]: logger.info(str(x))
                     posts_list_global.extend(filtered_posts_list[:int(len(filtered_posts_list) / 2)])
                     logger.info('%s %s', 'Add revision record about channel for this date', channel.title)
                     revision = Revision(channel.channel_id, datetime.now(pytz.utc), len(filtered_posts_list))
@@ -356,7 +360,7 @@ class Controller:
         #    await asyncio.sleep(80)
 
     async def do_post_schedule(self):
-        while self.active_posting is True:
+        while True:
             logger.info("Function post 2 times in hour 3 random media from database in period 09:00-23:00 GMT+3 "
                         "or 06:00-21:00 UTC")
             logger.info("Get current time in UTC")
@@ -379,11 +383,17 @@ class Controller:
                 logger.info('%s %s', "Now go sleep for: ", str(remaining))
                 await asyncio.sleep(remaining)
             else:
-                # self.database.printAllPosts()
-                logger.info("Time to post!")
-                await self.do_post()
-                logger.info("Done! Now sleep for 29 minutes")
-                await asyncio.sleep(1740)
+                if self.active_posting is True:
+                    logger.info('Automatic posting is active now')
+                    # self.database.printAllPosts()
+                    logger.info("Time to post!")
+                    await self.do_post()
+                    logger.info("Done! Now sleep for 29 minutes")
+                    await asyncio.sleep(1740)
+                else:
+                    logger.info('Automatic posting is inactive now')
+                    logger.info("Now sleep for 30 minutes")
+                    await asyncio.sleep(1800)
 
     async def do_post(self):
         for i in range(0, 3):
@@ -419,4 +429,4 @@ class Controller:
             logger.info("Await(alive) function")
             current_time_utc = datetime.time(datetime.now(pytz.utc))
             logger.info('%s %s', 'Now: ', str(current_time_utc))
-            await asyncio.sleep(60)
+            await asyncio.sleep(300)

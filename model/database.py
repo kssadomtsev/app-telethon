@@ -92,8 +92,8 @@ class Database:
 
     def setPostPosted(self, post):
         session = self.Session()
-        r = session.query(Post).filter(
-            Post.channel_id == post.channel_id and Post.message_id == post.message_id).first()
+        r = session.query(Post).filter(Post.channel_id == post.channel_id).filter(
+            Post.message_id == post.message_id).first()
         r.posted = True
         session.commit()
         session.close()
