@@ -52,6 +52,7 @@ class Database:
                         Column('channel_id', Integer, ForeignKey('channels.channel_id'), primary_key=True),
                         Column('message_id', Integer, primary_key=True),
                         Column('media', String),
+                        Column('date_time', DateTime),
                         Column('posted', Boolean, default=False))
 
     def __init__(self):
@@ -220,14 +221,16 @@ class Post(Base):
     channel_id = Column(Integer, ForeignKey('channels.channel_id', ondelete='CASCADE'), primary_key=True)
     message_id = Column(Integer, primary_key=True)
     media = Column(String)
+    date_time = Column(DateTime)
     posted = Column(Boolean)
 
-    def __init__(self, channel_id, message_id, media, posted):
+    def __init__(self, channel_id, message_id, media, date_time, posted):
         self.channel_id = channel_id
         self.message_id = message_id
         self.media = media
+        self.date_time = date_time
         self.posted = posted
 
     def __repr__(self):
-        return "<Post(channel_id='%s', message_id='%s', media='%s' posted='%s')>" % \
-               (self.channel_id, self.message_id, self.media, self.posted)
+        return "<Post(channel_id='%s', message_id='%s', media='%s',time='%s' posted='%s')>" % \
+               (self.channel_id, self.message_id, self.media, self.date_time, self.posted)

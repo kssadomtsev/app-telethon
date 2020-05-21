@@ -132,7 +132,8 @@ class Controller:
                 try:
                     channel_id = msg.message.lower().split(' ')[1]
                     if self.database.getChannelByID(channel_id) is not None:
-                        channel_entity = await self.client.get_input_entity(self.database.getChannelByID(channel_id).link)
+                        channel_entity = await self.client.get_input_entity(
+                            self.database.getChannelByID(channel_id).link)
                         await self.client(LeaveChannelRequest(
                             channel=channel_entity))
                         self.database.delChannelByID(channel_id)
@@ -202,7 +203,7 @@ class Controller:
                                + str(revision[2]) + ', time(GMT+3): ' \
                                + str(
                             revision[3].astimezone(pytz.timezone("Europe/Moscow")).strftime("%Y-%m-%d %H:%M:%S")) + '\n'
-                    #print(revisions)
+                    # print(revisions)
                     logger.info(msg)
                     await event.respond(msg)
                 except Exception as ex:
@@ -327,10 +328,10 @@ class Controller:
                             s in msg.message for s in ["https", ".shop", ".com", ".ru"])), posts_list))
                     logger.info('%s %s', 'After filtering  messages list contain: ',
                                 str(len(filtered_posts_list)))
-                    #for x in filtered_posts_list: logger.info(str(x))
+                    # for x in filtered_posts_list: logger.info(str(x))
                     logger.info('Sort list by views and save 50% first more popular post to global')
                     filtered_posts_list.sort(key=lambda msg: msg.views, reverse=True)
-                    #for x in filtered_posts_list[:int(len(filtered_posts_list)/2)]: logger.info(str(x))
+                    # for x in filtered_posts_list[:int(len(filtered_posts_list)/2)]: logger.info(str(x))
                     posts_list_global.extend(filtered_posts_list[:int(len(filtered_posts_list) / 2)])
                     logger.info('%s %s', 'Add revision record about channel for this date', channel.title)
                     revision = Revision(channel.channel_id, datetime.now(pytz.utc), len(filtered_posts_list))
@@ -350,7 +351,7 @@ class Controller:
         logger.info('Now we should cast class Message to Post')
         # logger.info(posts_list_global[0])
         filtered_posts_list_global_in_post = list(
-            map(lambda msg: Post(msg.to_id.channel_id, msg.id, "", False), posts_list_global))
+            map(lambda msg: Post(msg.to_id.channel_id, msg.id, "", msg.date, False), posts_list_global))
         # for x in filtered_posts_list_global_in_post: print(x)
         self.database.addPosts(filtered_posts_list_global_in_post)
         # for post in filtered_posts_list_global_in_post:
