@@ -363,12 +363,12 @@ class Controller:
     async def do_post_schedule(self):
         while True:
             logger.info("Function post 2 times in hour 3 random media from database in period 09:00-23:00 GMT+3 "
-                        "or 06:00-21:00 UTC")
+                        "or 06:00-20:00 UTC")
             logger.info("Get current time in UTC")
             current_time_utc = datetime.time(datetime.now(pytz.utc))
             logger.info('%s %s', 'Now: ', str(current_time_utc))
             after_time_utc = time(hour=6, minute=0)
-            before_time_utc = time(hour=21, minute=0)
+            before_time_utc = time(hour=20, minute=0)
             if current_time_utc < after_time_utc:
                 logger.info("Current time less than 09:00 GMT+3(06:00 UTC)")
                 remaining = (datetime.combine(datetime.date(datetime.now(pytz.utc)), after_time_utc)
@@ -377,7 +377,7 @@ class Controller:
                 logger.info('%s %s', "Now go sleep for: ", str(remaining))
                 await asyncio.sleep(remaining)
             if current_time_utc > before_time_utc:
-                logger.info("Current time greater than 08:00 GMT+3(05:00 UTC)")
+                logger.info("Current time greater than 23:00 GMT+3(20:00 UTC)")
                 remaining = (datetime.combine(datetime.date(datetime.now(pytz.utc)) + timedelta(days=1), after_time_utc)
                              - datetime.combine(datetime.date(datetime.now(pytz.utc)),
                                                 current_time_utc)).total_seconds()
