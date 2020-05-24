@@ -4,6 +4,7 @@ This Telegram bot can be used to automatic monitoring some public Telegram chann
 
 ## Technologies
 
+* Python 3.8
 * [Telethon](https://tl.telethon.dev/)
 * asyncio
 * PostgreSQL
