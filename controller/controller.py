@@ -99,7 +99,7 @@ class Controller:
                     help_msg = help_file.read()
                     await event.respond(help_msg, parse_mode='html')
             elif msg.message.lower() == 'list':
-                logger.info('Message is channels list request')
+                logger.info('Message is channels list  request')
                 try:
                     channels = self.database.getAllChannels()
                     response = "Now is listening following channels:\n" + "\n".join(map(str, channels))
