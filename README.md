@@ -48,6 +48,12 @@ Your should create 5 environment variables:
 ### First start
 As your new client not authorized yet after first application start will appear prompt to enter new code that Telegram sent you over the app (over phone application for example).
 In success case new session will be store in file <Telegram.session>.session (Telegram.session - value from config.ini)  in your disk (persistent information such as access key and others). This is by default a database file using Python’s sqlite3.
+In case if you will decide to move project from dev to prod environment you should move *.session file too.
+
+## How it works
+
+### Model
+
 
 ## Technologies
 
