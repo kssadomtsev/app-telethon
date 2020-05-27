@@ -56,8 +56,11 @@ class Controller:
                                                             func=lambda e: e.grouped_id))
             self.client.add_event_handler(self.forward_msg, events.NewMessage(from_users=('@Ordicyn', '@lazycat90210'),
                                                                               func=lambda e: e.grouped_id is None))
+            # Task to print alive-messages every 5 minutes
             loop.create_task(self.print_forever())
+            # Task to grab the most popular posts from channels (table "channels") every day at 08:00 GMT+3
             loop.create_task(self.do_dump_schedule())
+            # Task to post 2 times in hour 3 random media from posts (table "posts") in period 09:00-23:00 GMT+3
             loop.create_task(self.do_post_schedule())
             self.client.run_until_disconnected()
 

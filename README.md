@@ -53,6 +53,53 @@ In case if you will decide to move project from dev to prod environment you shou
 ## How it works
 
 ### Model
+![UML](https://raw.githubusercontent.com/kssadomtsev/app-telethon/master/UML.png)
+
+Application class model is based on UML diagram bellow. By using ORM SQLAlchemy class model related with database model.
+Let's see purpose every class (table):
+1. Channel (table ''channels'') - represent Telegram channel and store information about channels than should be used as content source.
+2. Revision (table ''revision'')  - represent history log with information about Telegram channel revision. It needed for statistic purpose.
+3. Post (table ''posts'') - represent single telegram post. Application is clearing and filling this table by schedule.
+
+Tables ''revision'' and ''posts'' are empty by default, but table ''channels'' init SQL script is hardcoded in model/database.py
+
+### asyncio
+
+asyncio is a Python 3's built-in library. This means it's already installed if you have Python 3.
+
+Application based on  asynchronous module Telethon. By this reason controller class controller/controller.py has some asyncio methods.
+
+Assigning the default event loop from the main thread to a variable:
+```
+# Create a global variable to hold the loop we will be using
+loop = asyncio.get_event_loop()
+```
+
+Adding tasks to event loop:
+```
+# Task to print alive-messages every 5 minutes
+loop.create_task(self.print_forever())
+# Task to grab the most popular posts from channels (table "channels") every day at 08:00 GMT+3
+loop.create_task(self.do_dump_schedule())
+# Task to post 2 times in hour 3 random media from posts (table "posts") in period 09:00-23:00 GMT+3
+loop.create_task(self.do_post_schedule())
+```
+
+And finally run Telegram client (and all it's event handlers). It should be run after all operations with event loop as it takes control until end.
+```
+self.client.run_until_disconnected()
+```
+
+### Hardcoded details
+Application accepts control connection as specific telegram commands in direct chat to your bot user. List of users how can send this command is hardcoded in controller/controller.py (look at parameter from_users)
+```
+self.client.add_event_handler(self.forward_album_legacy,
+                              events.NewMessage(from_users=('@user1', '@user2'),
+                                                            func=lambda e: e.grouped_id))
+self.client.add_event_handler(self.forward_msg, events.NewMessage(from_users=('@user1', '@user2'),
+                                                            func=lambda e: e.grouped_id is None))
+```
+
 
 
 ## Technologies
