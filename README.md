@@ -91,6 +91,9 @@ self.client.run_until_disconnected()
 ```
 
 ### Hardcoded details
+
+#### Admins access
+
 Application accepts control connection as specific telegram commands in direct chat to your bot user. List of users how can send this command is hardcoded in controller/controller.py (look at parameter from_users)
 ```
 self.client.add_event_handler(self.forward_album_legacy,
@@ -99,8 +102,151 @@ self.client.add_event_handler(self.forward_album_legacy,
 self.client.add_event_handler(self.forward_msg, events.NewMessage(from_users=('@user1', '@user2'),
                                                             func=lambda e: e.grouped_id is None))
 ```
+#### Spam filter
 
+For preventing resend promotion and posts with links application application uses hardcoded lambda expression in controller/controller.py 
+```
+filtered_posts_list = list(
+        filter(lambda msg: (dt_after <= msg.date and dt_before >= msg.date)
+                           and (msg.grouped_id is None)
+                           and (msg.media is not None)
+                           and (msg.reply_markup is None)
+                           and (isinstance(msg.media, MessageMediaPhoto)
+                                or isinstance(msg.media, MessageMediaDocument))
+                           and (not any(
+            s in msg.message for s in ["https", ".shop", ".com", ".ru"])), posts_list))
+```
+#### Text watermark
 
+Application send posts in your channel with text link watermark. Look at parameter `caption` in command `await self.client.send_file`
+
+#### Periods & timers
+
+Application has following hardcoded period time parameters:
+* Application is grabbing the most popular posts from channels (table "channels") every day at 05:00 UTC (08:00 GMT+3)
+* Application is posting 2 times in hour 3 random media from posts (table "posts") in period 06:00 - 20:00 UTC (09:00-23:00 GMT+3)
+
+Those parameters are hardcoded in controller/controller.py 
+
+## Deployment
+
+I used as production environment Docker containers. You can deploy application on your own environment (even on your PC) or you can use instruction below to deploy in Docker.
+
+### Docker network
+
+At first you should create Docker network:
+```
+docker network create telethon-net
+```
+And than check network status:
+```
+docker network inspect telethon-net
+```
+
+### Alpine
+
+Alpine Linux is a security-oriented, lightweight Linux distribution based on musl libc and busybox. We will use it to run Python application.
+Create new image (alpline + specific dependencies):
+```
+mkdir alpine-telethon
+nano Dockerfile
+ ```
+Docker file:
+```
+FROM python:3.8.2-alpine
+LABEL maintainer="your_email@gmail.com"
+RUN apk add git
+RUN apk --update add build-base libffi-dev openssl-dev postgresql-dev gcc python3-dev musl-dev
+RUN git init .
+RUN git remote add origin <Your repo in Github>.git
+RUN git pull origin master
+RUN pip install --no-cache-dir -r requirements.txt
+ ```
+Build image:
+```
+docker build --no-cache --tag kssadomtsev/alpine-telethon .
+ ```
+Make sure that new build was created:
+```
+docker images
+ ```
+
+### Postgres
+Pull Postgres image from Docker Hub:
+```
+docker pull postgres:12.3
+ ```
+Run container in Docker network:
+```
+docker run --name postgres -e POSTGRES_PASSWORD=***** -e POSTGRES_DB=telethon -d --net telethon-net -e VIRTUAL_HOST=postgres.local postgres:12.3
+ ```
+Make sure that container is running:
+```
+docker ps
+```
+Enter to container shell (if needed):
+```
+docker exec -it postgres psql -U postgres telethon
+```
+
+### Application bot
+Create new image:
+```
+mkdir app-telethon
+nano Dockerfile
+```
+Docker file:
+```
+FROM kssadomtsev/alpine-telethon
+LABEL maintainer="your_email@gmail.com"
+ENV MODE dev
+ENV api_id *****
+ENV api_hash *****
+ENV password_db *****
+ENV host_db postgres
+WORKDIR /usr/src/
+RUN git init .
+RUN git remote add origin <Your repo in Github>.git
+RUN git pull origin master
+RUN ls -la
+EXPOSE 8002
+CMD ["python", "main.py"]
+```
+
+Build image:
+```
+docker build --no-cache -t kssadomtsev/app-telethon .
+ ```
+Make sure that new build was created:
+```
+docker images
+ ```
+Run container in Docker network:
+```
+docker run --name app-telethon -d --net telethon-net -e VIRTUAL_HOST=app-telethon.local -p 127.0.0.1:8002:8002 kssadomtsev/app-telethon
+ ```
+View logs:
+```
+docker logs -f <container ID>
+ ```
+
+## Use the Application
+Once the application is running either from the IDE or in production user can interact with it.
+
+Currently following commands are supported:
+<ol>
+<li><strong>list</strong> - display list of monitored channels</li>
+<li><strong>add &lt;channel join link&gt;</strong> - add new channel to list of monitored channels . Examples:&nbsp;add <a href="https://t.me/Krololochanne">https://t.me/Krololochannel</a> or: add @grustnie_memi</li>
+<li><strong>delete &lt;ID channel&gt;</strong> - delete channel from list by its ID (you can view ID in output list command). Will be deleted all posts from this channel from the database and bot will leave this channel</li>
+<li><strong>dump</strong> - delete all posts from the database and collect new posts by actual list. Will be collected 50% most viewed post. Time range: from 21:00 two days ago until 21:00 yesterday (GMT +3).</li>
+<li><strong>post</strong> - send to your channel 3 posts that wasn't posted before</li>
+<li><strong>start</strong> - start process automate posting to your channel in period 09:00-23:00 (GMT +3) </li>
+<li><strong>stop</strong> - stop process automate posting to your channel in period 09:00-23:00 (GMT +3)</li>
+<li><strong>stats</strong> - bot statistic</li>
+<li><strong>help</strong> - help</li>
+</ol>
+<p>By default bot one time in day is clearing posts database (at 05:00 UTC or at 08:00 GMT+3) and fill it again by actual channels list. In period 06:00-20:00 UTC (09:00-23:00 GMT+3) bot is sending 3 posts in your channel two times in hour.</p>
+<p>Just send or forward bot video, photo or album and it do new post in your channel with your watermark</p>
 
 ## Technologies
 
@@ -110,3 +256,9 @@ self.client.add_event_handler(self.forward_msg, events.NewMessage(from_users=('@
 * PostgreSQL
 * [SQLAlchemy](https://www.sqlalchemy.org/)
 * Docker
+
+## Questions
+Please make use of this bot, share your knowledge and adapt it for your needs.
+
+## Contributing
+Feedback is highly appreciated. You may open issues, send pull requests or simply contact me.
