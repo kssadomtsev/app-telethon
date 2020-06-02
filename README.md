@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/kssadomtsev/ordicynbot_4.svg?branch=master)](https://travis-ci.org/kssadomtsev/ordicynbot_4)
+[![Build Status](https://travis-ci.org/kssadomtsev/app-telethon.svg?branch=master)](https://travis-ci.org/kssadomtsev/app-telethon)
 
 # Channels grabber Telegram bot
 
