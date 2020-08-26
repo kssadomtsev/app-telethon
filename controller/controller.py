@@ -22,6 +22,7 @@ config.read("config.ini")
 # Apply config values to vars
 chat = config['Bot']['chat']
 buffer_chat = config['Bot']['buffer_chat']
+bot = config['Bot']['bot']
 
 logger = get_logger()
 
@@ -415,8 +416,7 @@ class Controller:
                 ))
                 logger.info(str(msg))
                 media = msg.messages[0].media
-                await self.client.send_file(buffer_chat, media,
-                                            caption='✅ [Сохранёнки](https://t.me/savedmemess) \n Поста из канала: ' + str(post.channel_id))
+                await self.client.send_file(bot, media, caption='✅ [Сохранёнки](https://t.me/savedmemess)')
                 logger.info("Post was send. Now mark it in database as marked")
                 try:
                     self.database.setPostPosted(post)
